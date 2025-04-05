@@ -184,7 +184,6 @@ bool InitializeMsgRecvHook(uintptr_t targetFunctionAddress) {
         return false;
     }
 
-    std::cout << "[MsgRecvHook] Hook initialized successfully at 0x" << std::hex << targetFunctionAddress << std::dec << std::endl;
     return true;
 }
 

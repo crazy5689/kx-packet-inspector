@@ -75,8 +75,6 @@ bool InitializeMsgSendHook(uintptr_t targetFunctionAddress) {
         return false;
     }
 
-    // Log::Info("MsgSend hook initialized successfully at 0x%p", (void*)targetFunctionAddress);
-    std::cout << "[Info] MsgSend hook initialized successfully at 0x" << std::hex << targetFunctionAddress << std::dec << std::endl;
     return true;
 }
 
