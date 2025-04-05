@@ -225,29 +225,25 @@ namespace kx::Hooking {
 
 
     LRESULT __stdcall D3DRenderHook::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-        // Give ImGui priority if it's initialized and the UI is shown
-        if (m_isInit && g_showInspectorWindow) { // Use AppState flag
-            // Let ImGui process the message first (updates io.WantCaptureMouse/Keyboard)
+
+        // If ImGui is initialized and visible, let it process the message first.
+        if (m_isInit && kx::g_showInspectorWindow) {
+
+            // Pass messages to ImGui handler to update its state and capture flags.
             ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
 
             ImGuiIO& io = ImGui::GetIO();
-            // Check if ImGui wants to capture input *after* it has processed the message.
-            if (io.WantCaptureKeyboard && (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP || uMsg == WM_CHAR /* || other relevant key messages */)) {
-                return 1; // Block keyboard input from game
+
+            // If ImGui wants keyboard or mouse input, block it from reaching the game.
+            if (io.WantCaptureKeyboard || io.WantCaptureMouse) {
+                // Return 1 indicates the message was handled here.
+                return 1;
             }
-            if (io.WantCaptureMouse && (uMsg == WM_MOUSEMOVE || uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEWHEEL || uMsg == WM_XBUTTONDOWN || uMsg == WM_XBUTTONUP /* || other relevant mouse messages */)) {
-                return 1; // Block mouse input from game
-            }
-            // Add WM_SETCURSOR check if needed:
-            // if (io.WantCaptureMouse && uMsg == WM_SETCURSOR) {
-            //     SetCursor(ImGui::GetMouseCursor() == ImGuiMouseCursor_None ? NULL : LoadCursor(NULL, IDC_ARROW)); // Example cursor handling
-            //     return 1;
-            // }
         }
 
-        // If ImGui didn't capture input or isn't active, pass to the original WndProc
+        // Otherwise, pass the message to the original game window procedure.
         return m_pOriginalWndProc ? CallWindowProc(m_pOriginalWndProc, hWnd, uMsg, wParam, lParam)
-            : DefWindowProc(hWnd, uMsg, wParam, lParam);
+            : DefWindowProc(hWnd, uMsg, wParam, lParam); // Fallback
     }
 
 
