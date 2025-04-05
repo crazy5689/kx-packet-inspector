@@ -159,6 +159,7 @@
     <ClCompile Include="src\Console.cpp" />
     <ClCompile Include="src\CryptoUtils.cpp" />
     <ClCompile Include="src\D3DRenderHook.cpp" />
+    <ClCompile Include="src\FilterUtils.cpp" />
     <ClCompile Include="src\FormattingUtils.cpp" />
     <ClCompile Include="src\GuiStyle.cpp" />
     <ClCompile Include="src\HookManager.cpp" />
@@ -184,6 +185,7 @@
     <ClInclude Include="src\Console.h" />
     <ClInclude Include="src\CryptoUtils.h" />
     <ClInclude Include="src\D3DRenderHook.h" />
+    <ClInclude Include="src\FilterUtils.h" />
     <ClInclude Include="src\FormattingUtils.h" />
     <ClInclude Include="src\GameStructs.h" />
     <ClInclude Include="src\GuiStyle.h" />

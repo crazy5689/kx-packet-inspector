@@ -6,6 +6,9 @@
 #include "AppState.h"   // Include for UI state, filter state, hook status
 #include "GuiStyle.h"  // Include for custom styling functions
 #include "FormattingUtils.h"
+#include "FilterUtils.h"
+#include "PacketHeaders.h" // Need this for iterating known headers
+
 #include <vector>
 #include <mutex>
 #include <deque>
@@ -15,32 +18,8 @@
 #include <ctime>   // For formatting time
 #include <string>
 #include <map>     // For std::map used in filtering
-#include "PacketHeaders.h" // Need this for iterating known headers
 #include <windows.h> // Required for ShellExecuteA
 #include <algorithm> // For std::sort if needed later
-
-namespace { // Anonymous namespace for helper
-    void InitializeFilters() {
-        // Clear existing (in case of re-init?)
-        kx::g_packetHeaderFilterSelection.clear();
-        kx::g_specialPacketFilterSelection.clear();
-
-        // Populate CMSG headers
-        for (const auto& headerInfo : kx::GetKnownCMSGHeaders()) {
-            kx::g_packetHeaderFilterSelection[std::make_pair(kx::PacketDirection::Sent, headerInfo.first)] = false; // Default unchecked
-        }
-
-        // Populate SMSG headers
-        for (const auto& headerInfo : kx::GetKnownSMSGHeaders()) {
-            kx::g_packetHeaderFilterSelection[std::make_pair(kx::PacketDirection::Received, headerInfo.first)] = false; // Default unchecked
-        }
-
-        // Populate Special types
-        for (const auto& typeInfo : kx::GetSpecialPacketTypesForFilter()) {
-            kx::g_specialPacketFilterSelection[typeInfo.first] = false; // Default unchecked
-        }
-    }
-} // end anonymous namespace
 
 bool ImGuiManager::Initialize(ID3D11Device* device, ID3D11DeviceContext* context, HWND hwnd) {
     IMGUI_CHECKVERSION();
@@ -53,10 +32,6 @@ bool ImGuiManager::Initialize(ID3D11Device* device, ID3D11DeviceContext* context
 
     if (!ImGui_ImplWin32_Init(hwnd)) return false;
     if (!ImGui_ImplDX11_Init(device, context)) return false;
-
-    // *** NEW: Initialize filters ***
-    InitializeFilters();
-    // *** END NEW ***
 
     return true;
 }
@@ -251,88 +226,48 @@ void ImGuiManager::RenderPacketLogSection() {
     ImGui::Separator();
     ImGui::BeginChild("PacketLogScrollingRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
 
-    // --- Filtering: Build list of visible item indices ---
+    // --- Filtering Step ---
+    // 1. Acquire lock to safely access g_packetLog and filter state (AppState)
+    // 2. Call the filtering function ONCE before the clipper.
     std::vector<int> filtered_indices;
-    {
-        std::lock_guard<std::mutex> lock(kx::g_packetLogMutex);
-        filtered_indices.reserve(kx::g_packetLog.size());
+    { // Lock scope for reading log and filter state
+        std::lock_guard<std::mutex> lock(kx::g_packetLogMutex); // Protect g_packetLog
+        // Assuming filter state in AppState doesn't need its own mutex for reads here,
+        // or that modifications happen infrequently enough on the main thread.
+        // If filter settings can change rapidly from another thread, they'd need protection too.
+        filtered_indices = kx::Filtering::GetFilteredPacketIndices(kx::g_packetLog);
+    } // Release lock
 
-        for (int i = 0; i < kx::g_packetLog.size(); ++i) {
-            const auto& packet = kx::g_packetLog[i];
-            bool showPacket = true;
-
-            // Apply direction filter
-            if (kx::g_packetDirectionFilterMode == kx::DirectionFilterMode::ShowSentOnly && packet.direction != kx::PacketDirection::Sent) {
-                showPacket = false;
-            }
-            else if (kx::g_packetDirectionFilterMode == kx::DirectionFilterMode::ShowReceivedOnly && packet.direction != kx::PacketDirection::Received) {
-                showPacket = false;
-            }
-
-            // Apply header/type include/exclude filter
-            if (showPacket && kx::g_packetFilterMode != kx::FilterMode::ShowAll) {
-                bool isChecked = false;
-                bool foundInFilters = false;
-
-                if (packet.specialType == kx::InternalPacketType::NORMAL || packet.specialType == kx::InternalPacketType::UNKNOWN_HEADER) {
-                    auto key = std::make_pair(packet.direction, packet.rawHeaderId);
-                    auto it = kx::g_packetHeaderFilterSelection.find(key);
-                    if (it != kx::g_packetHeaderFilterSelection.end()) {
-                        isChecked = it->second;
-                        foundInFilters = true;
-                    }
-                }
-                else {
-                    auto it = kx::g_specialPacketFilterSelection.find(packet.specialType);
-                    if (it != kx::g_specialPacketFilterSelection.end()) {
-                        isChecked = it->second;
-                        foundInFilters = true;
-                    }
-                }
-
-                if (kx::g_packetFilterMode == kx::FilterMode::IncludeOnly) {
-                    if (!foundInFilters || !isChecked) showPacket = false;
-                }
-                else { // Exclude mode
-                    if (foundInFilters && isChecked) showPacket = false;
-                }
-            }
-
-            if (showPacket) {
-                filtered_indices.push_back(i);
-            }
-        }
-    } // End lock scope
-
-     // --- Rendering with Clipper ---
+    // --- Rendering with Clipper ---
+    // Use the pre-filtered indices with the clipper
     ImGuiListClipper clipper;
-    clipper.Begin(filtered_indices.size());
+    clipper.Begin(filtered_indices.size()); // Use the size of the filtered list
     while (clipper.Step()) {
+        // Lock only needed for accessing the specific packets during rendering step
         std::lock_guard<std::mutex> lock(kx::g_packetLogMutex);
 
-        for (int j = clipper.DisplayStart; j < clipper.DisplayEnd; ++j) {
-            if (j < 0 || j >= filtered_indices.size()) continue;
-            int original_index = filtered_indices[j];
-            if (original_index >= kx::g_packetLog.size()) continue;
+        for (int display_index = clipper.DisplayStart; display_index < clipper.DisplayEnd; ++display_index) {
+            // Get the original index from the filtered list
+            if (display_index < 0 || display_index >= filtered_indices.size()) continue; // Bounds check
+            int original_index = filtered_indices[display_index];
 
+            // Ensure original index is still valid for the underlying log (paranoid check)
+            if (original_index < 0 || original_index >= kx::g_packetLog.size()) continue;
+
+            // Access the packet using the original index
             const auto& packet = kx::g_packetLog[original_index];
 
-            // --- Use helper to format log entry ---
-            std::string logEntry = kx::Utils::FormatLogEntryString(packet); // Use the helper
+            // --- Format and Render --- (This part remains mostly the same)
+            std::string logEntry = kx::Utils::FormatLogEntryString(packet);
 
-            // --- Render ---
-            ImGui::PushID(original_index);
+            ImGui::PushID(original_index); // Use original index for unique ID
 
-            // Calculate width for InputText, leaving space for the button
-            // Adjust multiplier as needed for button width + spacing
             float buttonWidth = ImGui::CalcTextSize("Copy").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
             ImGui::PushItemWidth(-buttonWidth);
             ImGui::InputText("##Pkt", (char*)logEntry.c_str(), logEntry.size() + 1, ImGuiInputTextFlags_ReadOnly);
             ImGui::PopItemWidth();
 
-            // Add the copy button for this line
             ImGui::SameLine();
-            // Use SmallButton for less visual clutter
             if (ImGui::SmallButton("Copy")) {
                 ImGui::SetClipboardText(logEntry.c_str());
             }
@@ -343,6 +278,7 @@ void ImGuiManager::RenderPacketLogSection() {
     clipper.End();
 
     // --- Auto-Scroll ---
+    // Check if scrollbar is at the bottom based on the filtered items
     if (!filtered_indices.empty() && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
         ImGui::SetScrollHereY(1.0f);
     }

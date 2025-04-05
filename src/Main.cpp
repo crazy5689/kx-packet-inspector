@@ -24,11 +24,36 @@ DWORD WINAPI EjectThread(LPVOID lpParameter) {
     return 0;
 }
 
+void InitializeFilters() {
+    // Clear existing (in case of re-init?)
+    kx::g_packetHeaderFilterSelection.clear();
+    kx::g_specialPacketFilterSelection.clear();
+
+    // Populate CMSG headers
+    for (const auto& headerInfo : kx::GetKnownCMSGHeaders()) {
+        kx::g_packetHeaderFilterSelection[std::make_pair(kx::PacketDirection::Sent, headerInfo.first)] = false; // Default unchecked
+    }
+
+    // Populate SMSG headers
+    for (const auto& headerInfo : kx::GetKnownSMSGHeaders()) {
+        kx::g_packetHeaderFilterSelection[std::make_pair(kx::PacketDirection::Received, headerInfo.first)] = false; // Default unchecked
+    }
+
+    // Populate Special types
+    for (const auto& typeInfo : kx::GetSpecialPacketTypesForFilter()) {
+        kx::g_specialPacketFilterSelection[typeInfo.first] = false; // Default unchecked
+    }
+    std::cout << "[Main] Filter selections initialized." << std::endl;
+}
+
 // Main function that runs in a separate thread
 DWORD WINAPI MainThread(LPVOID lpParameter) {
 #ifdef _DEBUG
     kx::SetupConsole(); // Only setup console in Debug builds
 #endif // _DEBUG
+
+    // *** Initialize Filters Early ***
+    InitializeFilters();
 
     if (!kx::InitializeHooks()) {
         std::cerr << "Failed to initialize hooks." << std::endl;
