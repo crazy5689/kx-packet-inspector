@@ -8,6 +8,7 @@
 #include "FormattingUtils.h"
 #include "FilterUtils.h"
 #include "PacketHeaders.h" // Need this for iterating known headers
+#include "Config.h"
 
 #include <vector>
 #include <mutex>
@@ -48,7 +49,6 @@ void ImGuiManager::Render(ID3D11DeviceContext* context, ID3D11RenderTargetView* 
     context->OMSetRenderTargets(1, &mainRenderTargetView, NULL);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
-
 
 
 // --- Helper Functions for Rendering UI Sections ---
@@ -282,15 +282,17 @@ void ImGuiManager::RenderPacketLogSection() {
 // --- Main Window Rendering Function ---
 
 void ImGuiManager::RenderPacketInspectorWindow() {
-    // Pass the address of the boolean to ImGui::Begin.
-    // ImGui will set this to false when the user clicks the 'x' button.
+    // Check if the window should be closed (user clicked 'x').
     if (!kx::g_isInspectorWindowOpen) {
-        // Early out if the window should be closed - prevents rendering contents after close request
         return;
     }
+
+    std::string windowTitle = "KX Packet Inspector v";
+    windowTitle += kx::APP_VERSION;
+
     // Set minimum window size constraints before calling Begin
-    ImGui::SetNextWindowSizeConstraints(ImVec2(350.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX)); // Use 0.0f for no min height constraint
-    ImGui::Begin("KX Packet Inspector", &kx::g_isInspectorWindowOpen);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(350.0f, 200.0f), ImVec2(FLT_MAX, FLT_MAX));
+    ImGui::Begin(windowTitle.c_str(), &kx::g_isInspectorWindowOpen);
 
     RenderHints();
     RenderInfoSection();
