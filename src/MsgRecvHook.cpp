@@ -3,6 +3,7 @@
 #include "AppState.h"        // For g_capturePaused, g_isShuttingDown
 #include "GameStructs.h"     // For offsets, RC4State, size mask
 #include "Config.h"          // Potentially useful defines (currently none used here)
+#include "HookManager.h"
 
 #include <vector>
 #include <chrono>
@@ -157,50 +158,47 @@ void* __fastcall hookMsgRecv(
 }
 
 
-// Initializes the MinHook detour for the message receiving function.
+// Initializes the detour for the message receiving function using HookManager.
 bool InitializeMsgRecvHook(uintptr_t targetFunctionAddress) {
     if (targetFunctionAddress == 0) {
-        // Log::Error("InitializeMsgRecvHook called with null address.");
-        std::cerr << "[Error] InitializeMsgRecvHook called with null address." << std::endl;
+        std::cerr << "[MsgRecvHook] Error: InitializeMsgRecvHook called with null address." << std::endl;
         return false;
     }
 
-    hookedMsgRecvAddress = targetFunctionAddress; // Store for cleanup
+    // Store address for potential specific cleanup or identification
+    hookedMsgRecvAddress = targetFunctionAddress;
 
-    // Create the hook.
-    auto createStatus = MH_CreateHook(reinterpret_cast<LPVOID>(targetFunctionAddress), &hookMsgRecv, reinterpret_cast<LPVOID*>(&originalMsgRecv));
-    if (createStatus != MH_OK) {
-        // Log::Error("Failed to create MsgRecv hook: %s", MH_StatusToString(createStatus));
-        std::cerr << "[Error] Failed to create MsgRecv hook. Status: " << MH_StatusToString(createStatus) << std::endl;
+    // Create the hook using HookManager
+    if (!kx::Hooking::HookManager::CreateHook(reinterpret_cast<LPVOID>(targetFunctionAddress), &hookMsgRecv, reinterpret_cast<LPVOID*>(&originalMsgRecv))) {
+        // Error logged by HookManager
+        std::cerr << "[MsgRecvHook] Hook creation failed via HookManager." << std::endl;
         hookedMsgRecvAddress = 0;
         return false;
     }
 
-    // Enable the hook.
-    auto enableStatus = MH_EnableHook(reinterpret_cast<LPVOID>(targetFunctionAddress));
-    if (enableStatus != MH_OK) {
-        // Log::Error("Failed to enable MsgRecv hook: %s", MH_StatusToString(enableStatus));
-        std::cerr << "[Error] Failed to enable MsgRecv hook. Status: " << MH_StatusToString(enableStatus) << std::endl;
-        MH_RemoveHook(reinterpret_cast<LPVOID>(targetFunctionAddress)); // Attempt cleanup
+    // Enable the hook using HookManager
+    if (!kx::Hooking::HookManager::EnableHook(reinterpret_cast<LPVOID>(targetFunctionAddress))) {
+        // Error logged by HookManager
+        std::cerr << "[MsgRecvHook] Hook enabling failed via HookManager." << std::endl;
         hookedMsgRecvAddress = 0;
         return false;
     }
 
-    // Log::Info("MsgRecv hook initialized successfully at 0x%p", (void*)targetFunctionAddress);
-    std::cout << "[Info] MsgRecv hook initialized successfully at 0x" << std::hex << targetFunctionAddress << std::dec << std::endl;
+    std::cout << "[MsgRecvHook] Hook initialized successfully at 0x" << std::hex << targetFunctionAddress << std::dec << std::endl;
     return true;
 }
 
-// Disables and removes the MinHook detour for the message receiving function.
+// Cleans up resources related to the MsgRecv hook.
+// Primarily relies on HookManager::Shutdown for actual hook removal.
 void CleanupMsgRecvHook() {
     if (hookedMsgRecvAddress != 0) {
-        MH_DisableHook(reinterpret_cast<LPVOID>(hookedMsgRecvAddress));
-        MH_RemoveHook(reinterpret_cast<LPVOID>(hookedMsgRecvAddress));
-        // Note: We might log MH_DisableHook/MH_RemoveHook errors here if needed.
+        // --- Rely on global HookManager::Shutdown ---
+        // We no longer need to explicitly call MH_DisableHook or MH_RemoveHook here,
+        // as HookManager::Shutdown() handles disabling/removing all hooks managed by MinHook.
 
+        // Reset local state variables
         hookedMsgRecvAddress = 0;
-        originalMsgRecv = nullptr;
-        // Log::Info("Cleaned up MsgRecv hook.");
-        std::cout << "[Info] Cleaned up MsgRecv hook." << std::endl;
+        originalMsgRecv = nullptr; // Clear the original function pointer
+        std::cout << "[MsgRecvHook] Cleaned up." << std::endl; // Acknowledge cleanup call
     }
 }

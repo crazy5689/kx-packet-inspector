@@ -158,8 +158,10 @@
     <ClCompile Include="src\AppState.cpp" />
     <ClCompile Include="src\Console.cpp" />
     <ClCompile Include="src\CryptoUtils.cpp" />
+    <ClCompile Include="src\D3DRenderHook.cpp" />
     <ClCompile Include="src\FormattingUtils.cpp" />
     <ClCompile Include="src\GuiStyle.cpp" />
+    <ClCompile Include="src\HookManager.cpp" />
     <ClCompile Include="src\Hooks.cpp" />
     <ClCompile Include="src\ImGuiManager.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
@@ -181,9 +183,11 @@
     <ClInclude Include="src\Config.h" />
     <ClInclude Include="src\Console.h" />
     <ClInclude Include="src\CryptoUtils.h" />
+    <ClInclude Include="src\D3DRenderHook.h" />
     <ClInclude Include="src\FormattingUtils.h" />
     <ClInclude Include="src\GameStructs.h" />
     <ClInclude Include="src\GuiStyle.h" />
+    <ClInclude Include="src\HookManager.h" />
     <ClInclude Include="src\Hooks.h" />
     <ClInclude Include="src\ImGuiManager.h" />
     <ClInclude Include="ImGui\imconfig.h" />

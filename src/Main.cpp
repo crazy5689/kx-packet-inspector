@@ -30,7 +30,7 @@ DWORD WINAPI MainThread(LPVOID lpParameter) {
     kx::SetupConsole(); // Only setup console in Debug builds
 #endif // _DEBUG
 
-    if (!InitializeHooks()) {
+    if (!kx::InitializeHooks()) {
         std::cerr << "Failed to initialize hooks." << std::endl;
         return 1;
     }
@@ -46,7 +46,7 @@ DWORD WINAPI MainThread(LPVOID lpParameter) {
     Sleep(100); // Adjust delay if needed, or consider more robust synchronization
 
     // Cleanup hooks and ImGui
-    CleanupHooks();
+    kx::CleanupHooks();
 
     // Eject the DLL and exit the thread
     CreateThread(0, 0, EjectThread, 0, 0, 0);

@@ -2,6 +2,7 @@
 #include "PacketProcessor.h" // Include the new processor header
 #include "AppState.h"        // For g_capturePaused, g_isShuttingDown
 #include "GameStructs.h"     // For MsgSendContext definition
+#include "HookManager.h"
 
 #include <iostream> // For temporary error logging (replace with Log.h later)
 
@@ -60,23 +61,16 @@ bool InitializeMsgSendHook(uintptr_t targetFunctionAddress) {
         return false;
     }
 
-    hookedMsgSendAddress = targetFunctionAddress; // Store for cleanup
-
     // Create the hook.
-    auto createStatus = MH_CreateHook(reinterpret_cast<LPVOID>(targetFunctionAddress), &hookMsgSend, reinterpret_cast<LPVOID*>(&originalMsgSend));
-    if (createStatus != MH_OK) {
-        // Log::Error("Failed to create MsgSend hook: %s", MH_StatusToString(createStatus));
-        std::cerr << "[Error] Failed to create MsgSend hook. Status: " << MH_StatusToString(createStatus) << std::endl;
+    hookedMsgSendAddress = targetFunctionAddress; // Keep track for potential specific cleanup
+    if (!kx::Hooking::HookManager::CreateHook(reinterpret_cast<LPVOID>(targetFunctionAddress), &hookMsgSend, reinterpret_cast<LPVOID*>(&originalMsgSend))) {
+        std::cerr << "[MsgSendHook] Hook creation failed via HookManager." << std::endl;
         hookedMsgSendAddress = 0;
         return false;
     }
 
-    // Enable the hook.
-    auto enableStatus = MH_EnableHook(reinterpret_cast<LPVOID>(targetFunctionAddress));
-    if (enableStatus != MH_OK) {
-        // Log::Error("Failed to enable MsgSend hook: %s", MH_StatusToString(enableStatus));
-        std::cerr << "[Error] Failed to enable MsgSend hook. Status: " << MH_StatusToString(enableStatus) << std::endl;
-        MH_RemoveHook(reinterpret_cast<LPVOID>(targetFunctionAddress)); // Attempt cleanup
+    if (!kx::Hooking::HookManager::EnableHook(reinterpret_cast<LPVOID>(targetFunctionAddress))) {
+        std::cerr << "[MsgSendHook] Hook enabling failed via HookManager." << std::endl;
         hookedMsgSendAddress = 0;
         return false;
     }
@@ -89,13 +83,9 @@ bool InitializeMsgSendHook(uintptr_t targetFunctionAddress) {
 // Disables and removes the MinHook detour for the message sending function.
 void CleanupMsgSendHook() {
     if (hookedMsgSendAddress != 0) {
-        MH_DisableHook(reinterpret_cast<LPVOID>(hookedMsgSendAddress));
-        MH_RemoveHook(reinterpret_cast<LPVOID>(hookedMsgSendAddress));
-        // Note: We might log MH_DisableHook/MH_RemoveHook errors here if needed.
-
+        // Reset local state
         hookedMsgSendAddress = 0;
         originalMsgSend = nullptr;
-        // Log::Info("Cleaned up MsgSend hook.");
-        std::cout << "[Info] Cleaned up MsgSend hook." << std::endl;
+        std::cout << "[MsgSendHook] Cleaned up." << std::endl; // Acknowledge cleanup call
     }
 }
