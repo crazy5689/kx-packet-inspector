@@ -27,44 +27,73 @@ namespace kx::Utils {
     std::string FormatBytesToHex(const std::vector<uint8_t>& data, int maxBytes) {
         std::stringstream ss;
         int count = 0;
-        for (const auto& byte : data) {
-            if (count > 0) ss << " "; // Space separator
+        bool truncated = false; // Flag to check if truncation happened
 
+        for (const auto& byte : data) {
             // Apply maxBytes limit (only if positive)
             if (maxBytes > 0 && count >= maxBytes) {
                 ss << "...";
-                break;
+                truncated = true;
+                break; // Stop processing bytes
             }
+
+            if (count > 0) ss << " "; // Add space before the next byte (if not the first)
 
             ss << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
             count++;
         }
 
+        // Handle edge cases for display string
         if (data.empty()) {
             return "(empty)";
         }
-        else if (ss.str().empty() && maxBytes <= 0 && !data.empty()) {
-            return "..."; // Data exists but wasn't shown (maxBytes<=0)
+        // If maxBytes forced truncation and no bytes were printed (e.g., maxBytes=0)
+        if (count == 0 && maxBytes == 0 && !data.empty()) {
+            return "...";
         }
+        // If data exists, but limit was 0 or negative, and nothing printed (shouldn't happen with loop fix)
+        if (ss.str().empty() && !data.empty() && !truncated) {
+            // This case might indicate an issue, but return something sensible.
+            // If maxBytes <= 0, it should have printed everything.
+            return "(Error Formatting Hex?)"; // Or return empty string ""
+        }
+
 
         return ss.str();
     }
 
-    std::string FormatLogEntryString(const PacketInfo& packet) {
+    std::string FormatDisplayLogEntryString(const PacketInfo& packet, int maxHexBytes) {
         std::string timestampStr = FormatTimestamp(packet.timestamp);
         const char* directionStr = (packet.direction == PacketDirection::Sent) ? "[S]" : "[R]";
-        // Use the PacketInfo's helper to get potentially decrypted data
-        const auto& dataToDisplay = packet.GetDisplayData();
-        // Use the other helper for hex formatting
-        std::string dataHexStr = FormatBytesToHex(dataToDisplay, 32); // Consistent limit
+        const auto& dataToDisplay = packet.GetDisplayData(); // Use helper for potentially decrypted data
         int displaySize = dataToDisplay.size();
 
-        // Construct the final string using PacketInfo members
-        std::string logEntry = timestampStr + " " + directionStr + " "
-            + packet.name // Use the pre-resolved name from PacketInfo
-            + " | Sz:" + std::to_string(displaySize)
-            + " | " + dataHexStr;
-        return logEntry;
+        // *** Use the maxHexBytes parameter for display ***
+        std::string dataHexStr = FormatBytesToHex(dataToDisplay, maxHexBytes);
+
+        std::stringstream ss;
+        ss << timestampStr << " " << directionStr << " "
+            << packet.name // Use the pre-resolved name
+            << " | Sz:" << displaySize
+            << " | " << dataHexStr;
+        return ss.str();
+    }
+
+    std::string FormatFullLogEntryString(const PacketInfo& packet) {
+        std::string timestampStr = FormatTimestamp(packet.timestamp);
+        const char* directionStr = (packet.direction == PacketDirection::Sent) ? "[S]" : "[R]";
+        const auto& dataToDisplay = packet.GetDisplayData();
+        int displaySize = dataToDisplay.size();
+
+        // *** Call FormatBytesToHex with -1 (or 0) for no limit ***
+        std::string dataHexStr = FormatBytesToHex(dataToDisplay, -1); // Use -1 for unlimited
+
+        std::stringstream ss;
+        ss << timestampStr << " " << directionStr << " "
+            << packet.name
+            << " | Sz:" << displaySize
+            << " | " << dataHexStr;
+        return ss.str();
     }
 
 } // namespace kx::Utils

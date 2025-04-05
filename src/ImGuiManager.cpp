@@ -226,59 +226,51 @@ void ImGuiManager::RenderPacketLogSection() {
     ImGui::Separator();
     ImGui::BeginChild("PacketLogScrollingRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
 
-    // --- Filtering Step ---
-    // 1. Acquire lock to safely access g_packetLog and filter state (AppState)
-    // 2. Call the filtering function ONCE before the clipper.
+    // Get indices of packets that pass current filters.
     std::vector<int> filtered_indices;
-    { // Lock scope for reading log and filter state
-        std::lock_guard<std::mutex> lock(kx::g_packetLogMutex); // Protect g_packetLog
-        // Assuming filter state in AppState doesn't need its own mutex for reads here,
-        // or that modifications happen infrequently enough on the main thread.
-        // If filter settings can change rapidly from another thread, they'd need protection too.
-        filtered_indices = kx::Filtering::GetFilteredPacketIndices(kx::g_packetLog);
-    } // Release lock
-
-    // --- Rendering with Clipper ---
-    // Use the pre-filtered indices with the clipper
-    ImGuiListClipper clipper;
-    clipper.Begin(filtered_indices.size()); // Use the size of the filtered list
-    while (clipper.Step()) {
-        // Lock only needed for accessing the specific packets during rendering step
+    {
         std::lock_guard<std::mutex> lock(kx::g_packetLogMutex);
+        filtered_indices = kx::Filtering::GetFilteredPacketIndices(kx::g_packetLog);
+    }
+
+    // Use clipper for efficient rendering of visible items.
+    ImGuiListClipper clipper;
+    clipper.Begin(filtered_indices.size());
+    while (clipper.Step()) {
+        std::lock_guard<std::mutex> lock(kx::g_packetLogMutex); // Lock for accessing packet data
 
         for (int display_index = clipper.DisplayStart; display_index < clipper.DisplayEnd; ++display_index) {
-            // Get the original index from the filtered list
-            if (display_index < 0 || display_index >= filtered_indices.size()) continue; // Bounds check
+            if (display_index < 0 || display_index >= filtered_indices.size()) continue;
             int original_index = filtered_indices[display_index];
 
-            // Ensure original index is still valid for the underlying log (paranoid check)
             if (original_index < 0 || original_index >= kx::g_packetLog.size()) continue;
-
-            // Access the packet using the original index
             const auto& packet = kx::g_packetLog[original_index];
 
-            // --- Format and Render --- (This part remains mostly the same)
-            std::string logEntry = kx::Utils::FormatLogEntryString(packet);
+            // Generate display string (potentially truncated hex).
+            std::string displayLogEntry = kx::Utils::FormatDisplayLogEntryString(packet);
 
-            ImGui::PushID(original_index); // Use original index for unique ID
+            ImGui::PushID(original_index);
 
+            // Display read-only text.
             float buttonWidth = ImGui::CalcTextSize("Copy").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
             ImGui::PushItemWidth(-buttonWidth);
-            ImGui::InputText("##Pkt", (char*)logEntry.c_str(), logEntry.size() + 1, ImGuiInputTextFlags_ReadOnly);
+            ImGui::InputText("##Pkt", (char*)displayLogEntry.c_str(), displayLogEntry.size() + 1, ImGuiInputTextFlags_ReadOnly);
             ImGui::PopItemWidth();
 
             ImGui::SameLine();
+
+            // Copy button: generate and copy full log entry string on click.
             if (ImGui::SmallButton("Copy")) {
-                ImGui::SetClipboardText(logEntry.c_str());
+                std::string fullLogEntry = kx::Utils::FormatFullLogEntryString(packet);
+                ImGui::SetClipboardText(fullLogEntry.c_str());
             }
 
             ImGui::PopID();
-        }
-    }
+        } // End for visible items
+    } // End while clipper
     clipper.End();
 
-    // --- Auto-Scroll ---
-    // Check if scrollbar is at the bottom based on the filtered items
+    // Auto-scroll to bottom if scrollbar is already at the end.
     if (!filtered_indices.empty() && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
         ImGui::SetScrollHereY(1.0f);
     }
